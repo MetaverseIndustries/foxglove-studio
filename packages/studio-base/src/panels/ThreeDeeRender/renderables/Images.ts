@@ -398,7 +398,8 @@ export class Images extends SceneExtension<ImageRenderable> {
       return;
     }
 
-    const cameraModel = this._recomputeCameraModel(renderable, cameraInfo);
+    const cameraModel =
+      this._recomputeCameraModel(renderable, cameraInfo) ?? renderable.userData.cameraModel;
     if (cameraModel) {
       this._updateImageRenderable(renderable, image, cameraModel, receiveTime, settings);
     }
