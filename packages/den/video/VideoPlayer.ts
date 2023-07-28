@@ -2,15 +2,12 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import * as base64 from "@protobufjs/base64";
 import { Mutex } from "async-mutex";
 import EventEmitter from "eventemitter3";
 
 // foxglove-depcheck-used: @types/dom-webcodecs
 
 const MAX_DECODE_WAIT_MS = 50;
-
-type KeyValuePair = { key: string; value: string };
 
 export type VideoPlayerEventTypes = {
   frame: (frame: VideoFrame) => void;
@@ -39,57 +36,6 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   /** Reports whether video decoding is supported in this browser session */
   public static IsSupported(): boolean {
     return self.isSecureContext && "VideoDecoder" in globalThis;
-  }
-
-  /**
-   * Takes metadata from a `foxglove.CompressedVideo` message and returns a
-   * VideoDecoderConfig object that can be passed to init().
-   * @param metadata Metadata from a `foxglove.CompressedVideo` message
-   * @returns A VideoDecoderConfig object or undefined if required keys are
-   *   missing or parsing failed
-   */
-  public static ParseDecoderConfig(metadata: KeyValuePair[]): VideoDecoderConfig | undefined {
-    // Convert the key=value pairs into a Map
-    const params = new Map<string, string>();
-    for (const { key, value } of metadata) {
-      params.set(key, value);
-    }
-
-    const codec = params.get("codec");
-    const codedWidthStr = params.get("codedWidth") ?? params.get("coded_width");
-    const codedHeightStr = params.get("codedHeight") ?? params.get("coded_height");
-    const displayAspectWidthStr =
-      params.get("displayAspectWidth") ?? params.get("display_aspect_width");
-    const displayAspectHeightStr =
-      params.get("displayAspectHeight") ?? params.get("display_aspect_height");
-    const descriptionStr = params.get("configuration") ?? params.get("description");
-
-    if (!codec) {
-      return undefined;
-    }
-
-    const description = descriptionStr ? base64ToBytes(descriptionStr) : undefined;
-    let codedWidth = codedWidthStr ? parseInt(codedWidthStr, 10) : undefined;
-    let codedHeight = codedHeightStr ? parseInt(codedHeightStr, 10) : undefined;
-    let displayAspectWidth = displayAspectWidthStr
-      ? parseInt(displayAspectWidthStr, 10)
-      : undefined;
-    let displayAspectHeight = displayAspectHeightStr
-      ? parseInt(displayAspectHeightStr, 10)
-      : undefined;
-    codedWidth ||= undefined;
-    codedHeight ||= undefined;
-    displayAspectWidth ||= undefined;
-    displayAspectHeight ||= undefined;
-
-    return {
-      codec,
-      codedHeight,
-      codedWidth,
-      description,
-      displayAspectHeight,
-      displayAspectWidth,
-    };
   }
 
   public constructor() {
@@ -273,14 +219,4 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
     this.#pendingFrame?.close();
     this.#pendingFrame = undefined;
   }
-}
-
-function base64ToBytes(b64Str: string): Uint8Array {
-  const length = base64.length(b64Str);
-  let bytes = new Uint8Array(length);
-  const written = base64.decode(b64Str, bytes, 0);
-  if (written !== length) {
-    bytes = bytes.subarray(0, written);
-  }
-  return bytes;
 }
