@@ -17,8 +17,7 @@ import {
   decodeUYVY,
   decodeYUYV,
 } from "@foxglove/den/image";
-import { H264 } from "@foxglove/den/video";
-import { VideoPlayer } from "@foxglove/den/video";
+import { H264, VideoPlayer } from "@foxglove/den/video";
 import { toMicroSec } from "@foxglove/rostime";
 import { RawImage } from "@foxglove/schemas";
 
