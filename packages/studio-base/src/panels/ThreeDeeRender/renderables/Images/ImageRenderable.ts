@@ -21,8 +21,7 @@ import {
   decodeCompressedImageToBitmap,
   decodeCompressedVideoToBitmap,
   emptyVideoFrame,
-  isVideoKeyframe,
-  tryInitializeVideoPlayer,
+  getVideoDecoderConfig,
 } from "./decodeImage";
 import { CameraInfo } from "../../ros";
 
@@ -202,19 +201,22 @@ export class ImageRenderable extends Renderable<ImageUserData> {
 
     if ("format" in image) {
       if (VIDEO_FORMATS.has(image.format)) {
+        const frameMsg = image as CompressedVideo;
+
+        if (frameMsg.data.byteLength === 0) {
+          setError(new Error("Empty video frame"));
+          return;
+        }
+
         this.videoPlayer ??= new VideoPlayer();
         const videoPlayer = this.videoPlayer;
-        const frameMsg = image as CompressedVideo;
 
         decodePromise = (async () => {
           // Initialize the video player if needed
           if (!videoPlayer.isInitialized()) {
-            if (isVideoKeyframe(frameMsg)) {
-              const initialized = await tryInitializeVideoPlayer(frameMsg, videoPlayer);
-              if (!initialized) {
-                setError(new Error("Could not parse keyframe metadata"));
-                return await emptyVideoFrame(this.videoPlayer, resizeWidth);
-              }
+            const decoderConfig = getVideoDecoderConfig(frameMsg, videoPlayer);
+            if (decoderConfig) {
+              await videoPlayer.init(decoderConfig);
             } else {
               setError(new Error("Waiting for keyframe"));
               return await emptyVideoFrame(this.videoPlayer, resizeWidth);

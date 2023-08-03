@@ -42,27 +42,23 @@ export function isVideoKeyframe(frameMsg: CompressedVideo): boolean {
   return false;
 }
 
-export async function tryInitializeVideoPlayer(
+export function getVideoDecoderConfig(
   frameMsg: CompressedVideo,
   videoPlayer: VideoPlayer,
-): Promise<boolean> {
-  if (videoPlayer.isInitialized()) {
-    return true;
+): VideoDecoderConfig | undefined {
+  const prevConfig = videoPlayer.decoderConfig();
+  if (prevConfig) {
+    return prevConfig;
   }
 
   switch (frameMsg.format) {
     case "h264": {
       // Search for an SPS NAL unit to initialize the decoder. This should precede each keyframe
-      const decoderConfig = H264.ParseDecoderConfig(frameMsg.data);
-      if (decoderConfig) {
-        await videoPlayer.init(decoderConfig);
-        return true;
-      }
-      break;
+      return H264.ParseDecoderConfig(frameMsg.data);
     }
   }
 
-  return false;
+  return undefined;
 }
 
 export async function decodeCompressedVideoToBitmap(
@@ -75,11 +71,6 @@ export async function decodeCompressedVideoToBitmap(
     return await emptyVideoFrame(videoPlayer, resizeWidth);
   }
 
-  const keyframe = isVideoKeyframe(frameMsg);
-  if (!videoPlayer.hasKeyframe() && !keyframe) {
-    return await emptyVideoFrame(videoPlayer, resizeWidth);
-  }
-
   // Get the timestamp of this frame as microseconds relative to the first frame
   const firstTimestampMicros = Number(firstMessageTime / 1000n);
   const timestampMicros = toMicroSec(frameMsg.timestamp) - firstTimestampMicros;
@@ -87,7 +78,7 @@ export async function decodeCompressedVideoToBitmap(
   const videoFrame = await videoPlayer.decode(
     frameMsg.data,
     timestampMicros,
-    keyframe ? "key" : "delta",
+    isVideoKeyframe(frameMsg) ? "key" : "delta",
   );
   if (videoFrame) {
     const imageBitmap = await self.createImageBitmap(videoFrame, { resizeWidth });

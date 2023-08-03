@@ -27,7 +27,6 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   #decoderInit: VideoDecoderInit;
   #decoder: VideoDecoder;
   #decoderConfig: VideoDecoderConfig | undefined;
-  #hasKeyframe = false;
   #mutex = new Mutex();
   #pendingFrame: VideoFrame | undefined;
   #codedSize: { width: number; height: number } | undefined;
@@ -71,6 +70,11 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
         return;
       }
 
+      if (this.#decoder.state === "closed") {
+        this.emit("debug", "VideoDecoder is closed, creating a new one");
+        this.#decoder = new VideoDecoder(this.#decoderInit);
+      }
+
       this.emit("debug", `Configuring VideoDecoder with ${JSON.stringify(decoderConfig)}`);
       this.#decoder.configure(decoderConfig);
       this.#decoderConfig = decoderConfig;
@@ -87,9 +91,9 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
     return this.#decoder.state === "configured";
   }
 
-  /** Returns true if the VideoDecoder has received a keyframe since the last reset. */
-  public hasKeyframe(): boolean {
-    return this.#hasKeyframe;
+  /** Returns the VideoDecoderConfig given to init(), or undefined if init() has not been called. */
+  public decoderConfig(): VideoDecoderConfig | undefined {
+    return this.#decoderConfig;
   }
 
   /** Returns the dimensions of the coded video frames, if known. */
@@ -129,15 +133,6 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
       if (this.#decoder.state === "unconfigured") {
         this.emit("debug", "Waiting for initialization...");
         return undefined;
-      }
-
-      if (!this.#hasKeyframe) {
-        if (type === "key") {
-          this.#hasKeyframe = true;
-        } else {
-          this.emit("debug", `Waiting for keyframe...`);
-          return undefined;
-        }
       }
 
       await new Promise<void>((resolve) => {
@@ -201,13 +196,11 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
    * when seeking to a new position in the stream.
    */
   public resetForSeek(): void {
-    this.#decoder.reset();
-    if (this.#decoderConfig) {
-      this.#decoder.configure(this.#decoderConfig);
+    if (this.#decoder.state === "configured") {
+      this.#decoder.reset();
     }
     this.#pendingFrame?.close();
     this.#pendingFrame = undefined;
-    this.#hasKeyframe = false;
   }
 
   /**
@@ -215,7 +208,9 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
    * stream information or decoder configuration.
    */
   public close(): void {
-    this.#decoder.close();
+    if (this.#decoder.state !== "closed") {
+      this.#decoder.close();
+    }
     this.#pendingFrame?.close();
     this.#pendingFrame = undefined;
   }
