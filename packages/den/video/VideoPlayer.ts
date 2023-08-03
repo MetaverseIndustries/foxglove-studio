@@ -7,7 +7,7 @@ import EventEmitter from "eventemitter3";
 
 // foxglove-depcheck-used: @types/dom-webcodecs
 
-const MAX_DECODE_WAIT_MS = 50;
+const MAX_DECODE_WAIT_MS = 30;
 
 export type VideoPlayerEventTypes = {
   frame: (frame: VideoFrame) => void;
@@ -28,9 +28,9 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   #decoder: VideoDecoder;
   #decoderConfig: VideoDecoderConfig | undefined;
   #mutex = new Mutex();
+  #timeoutId: ReturnType<typeof setTimeout> | undefined;
   #pendingFrame: VideoFrame | undefined;
   #codedSize: { width: number; height: number } | undefined;
-  #displaySize: { width: number; height: number } | undefined;
 
   /** Reports whether video decoding is supported in this browser session */
   public static IsSupported(): boolean {
@@ -40,7 +40,7 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   public constructor() {
     super();
     this.#decoderInit = {
-      output: (videoFrame) => {
+      output: (videoFrame: VideoFrame) => {
         this.#pendingFrame?.close();
         this.#pendingFrame = videoFrame;
         this.emit("frame", videoFrame);
@@ -79,7 +79,6 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
       this.#decoder.configure(decoderConfig);
       this.#decoderConfig = decoderConfig;
       this.#codedSize = undefined;
-      this.#displaySize = undefined;
       if (decoderConfig.codedWidth != undefined && decoderConfig.codedHeight != undefined) {
         this.#codedSize = { width: decoderConfig.codedWidth, height: decoderConfig.codedHeight };
       }
@@ -99,11 +98,6 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   /** Returns the dimensions of the coded video frames, if known. */
   public codedSize(): { width: number; height: number } | undefined {
     return this.#codedSize;
-  }
-
-  /** Returns the display dimensions of the last decoded video frame, if known. */
-  public displaySize(): { width: number; height: number } | undefined {
-    return this.#displaySize;
   }
 
   /**
@@ -137,11 +131,17 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
 
       await new Promise<void>((resolve) => {
         const frameHandler = () => {
-          clearTimeout(timeoutId);
+          if (this.#timeoutId != undefined) {
+            clearTimeout(this.#timeoutId);
+          }
           resolve();
         };
 
-        const timeoutId = setTimeout(() => {
+        if (this.#timeoutId != undefined) {
+          clearTimeout(this.#timeoutId);
+        }
+
+        this.#timeoutId = setTimeout(() => {
           this.removeListener("frame", frameHandler);
           this.emit(
             "warn",
@@ -155,7 +155,7 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
         try {
           this.#decoder.decode(new EncodedVideoChunk({ type, data, timestamp: timestampMicros }));
         } catch (unk) {
-          clearTimeout(timeoutId);
+          clearTimeout(this.#timeoutId);
           this.removeListener("frame", frameHandler);
 
           const error = new Error(
@@ -178,12 +178,6 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
         }
         this.#codedSize.width = maybeVideoFrame.codedWidth;
         this.#codedSize.height = maybeVideoFrame.codedHeight;
-
-        if (!this.#displaySize) {
-          this.#displaySize = { width: 0, height: 0 };
-        }
-        this.#displaySize.width = maybeVideoFrame.displayWidth;
-        this.#displaySize.height = maybeVideoFrame.displayHeight;
       }
 
       return maybeVideoFrame;
@@ -199,6 +193,9 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
     if (this.#decoder.state === "configured") {
       this.#decoder.reset();
     }
+    if (this.#timeoutId != undefined) {
+      clearTimeout(this.#timeoutId);
+    }
     this.#pendingFrame?.close();
     this.#pendingFrame = undefined;
   }
@@ -210,6 +207,9 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   public close(): void {
     if (this.#decoder.state !== "closed") {
       this.#decoder.close();
+    }
+    if (this.#timeoutId != undefined) {
+      clearTimeout(this.#timeoutId);
     }
     this.#pendingFrame?.close();
     this.#pendingFrame = undefined;

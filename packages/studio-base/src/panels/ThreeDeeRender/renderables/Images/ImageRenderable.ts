@@ -7,6 +7,7 @@ import { assert } from "ts-essentials";
 
 import { PinholeCameraModel } from "@foxglove/den/image";
 import { VideoPlayer } from "@foxglove/den/video";
+import Logger from "@foxglove/log";
 import { toNanoSec } from "@foxglove/rostime";
 import { IRenderer } from "@foxglove/studio-base/panels/ThreeDeeRender/IRenderer";
 import { BaseUserData, Renderable } from "@foxglove/studio-base/panels/ThreeDeeRender/Renderable";
@@ -24,6 +25,8 @@ import {
   getVideoDecoderConfig,
 } from "./decodeImage";
 import { CameraInfo } from "../../ros";
+
+const log = Logger.getLogger(__filename);
 
 export interface ImageRenderableSettings {
   visible: boolean;
@@ -208,13 +211,17 @@ export class ImageRenderable extends Renderable<ImageUserData> {
           return;
         }
 
-        this.videoPlayer ??= new VideoPlayer();
+        if (!this.videoPlayer) {
+          this.videoPlayer = new VideoPlayer();
+          this.videoPlayer.on("error", (err) => setError(err));
+          this.videoPlayer.on("warn", (msg) => log.warn(msg));
+        }
         const videoPlayer = this.videoPlayer;
 
         decodePromise = (async () => {
           // Initialize the video player if needed
           if (!videoPlayer.isInitialized()) {
-            const decoderConfig = getVideoDecoderConfig(frameMsg, videoPlayer);
+            const decoderConfig = getVideoDecoderConfig(frameMsg);
             if (decoderConfig) {
               await videoPlayer.init(decoderConfig);
             } else {

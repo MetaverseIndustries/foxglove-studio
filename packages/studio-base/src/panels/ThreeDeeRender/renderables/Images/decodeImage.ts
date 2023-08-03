@@ -42,15 +42,7 @@ export function isVideoKeyframe(frameMsg: CompressedVideo): boolean {
   return false;
 }
 
-export function getVideoDecoderConfig(
-  frameMsg: CompressedVideo,
-  videoPlayer: VideoPlayer,
-): VideoDecoderConfig | undefined {
-  const prevConfig = videoPlayer.decoderConfig();
-  if (prevConfig) {
-    return prevConfig;
-  }
-
+export function getVideoDecoderConfig(frameMsg: CompressedVideo): VideoDecoderConfig | undefined {
   switch (frameMsg.format) {
     case "h264": {
       // Search for an SPS NAL unit to initialize the decoder. This should precede each keyframe
